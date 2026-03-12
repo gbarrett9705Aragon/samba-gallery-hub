@@ -14,18 +14,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Upload } from "lucide-react";
 import { format, parse } from "date-fns";
+import { useClub } from "@/context/ClubContext";
 
 const Admin = () => {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [players, setPlayers] = useState<any[]>([]);
-  const [teeTimes, setTeeTimes] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [calendar, setCalendar] = useState<any[]>([]);
   const [isPlayerDialogOpen, setIsPlayerDialogOpen] = useState(false);
-  const [isTeeTimeDialogOpen, setIsTeeTimeDialogOpen] = useState(false);
+  const [isSessionDialogOpen, setIsSessionDialogOpen] = useState(false);
+  const { activeClub } = useClub();
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
   const [isCalendarDialogOpen, setIsCalendarDialogOpen] = useState(false);
+  const [invites, setInvites] = useState<any[]>([]);
+  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const [newPlayer, setNewPlayer] = useState({
     first_name: "",
     last_name: "",
@@ -37,7 +41,7 @@ const Admin = () => {
   });
   const [newPlayerPhoto, setNewPlayerPhoto] = useState<File | null>(null);
   const [newPlayerPhotoPreview, setNewPlayerPhotoPreview] = useState<string | null>(null);
-  const [newTeeTime, setNewTeeTime] = useState({
+  const [newSession, setNewSession] = useState({
     date: "",
     time: "",
     course: "",
@@ -50,7 +54,7 @@ const Admin = () => {
   const [editPlayer, setEditPlayer] = useState<any>(null);
   const [editPlayerPhoto, setEditPlayerPhoto] = useState<File | null>(null);
   const [editPlayerPhotoPreview, setEditPlayerPhotoPreview] = useState<string | null>(null);
-  const [editTeeTime, setEditTeeTime] = useState<any>(null);
+  const [editSession, setEditSession] = useState<any>(null);
   const [editAnnouncement, setEditAnnouncement] = useState<any>(null);
   const [editCalendar, setEditCalendar] = useState<any>(null);
   const [editCalendarFile, setEditCalendarFile] = useState<File | null>(null);
@@ -59,10 +63,14 @@ const Admin = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    checkAdminAccess();
-  }, []);
+    if (activeClub) {
+      checkAdminAccess();
+    }
+  }, [activeClub]);
 
   const checkAdminAccess = async () => {
+    if (!activeClub) return;
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -71,17 +79,19 @@ const Admin = () => {
         return;
       }
 
-      // Check if user has admin role using the has_role function
-      const { data: roleData, error: roleError } = await (supabase.rpc as any)('has_role', { 
-        _user_id: user.id, 
-        _role: 'admin' 
-      });
+      // Check if user is an admin of the active club
+      const { data: membershipData, error: membershipError } = await supabase
+        .from('club_members')
+        .select('role')
+        .eq('club_id', activeClub.id)
+        .eq('user_id', user.id)
+        .single();
 
-      if (!roleData || roleError) {
+      if (membershipError || membershipData?.role !== 'Admin') {
         toast({
           variant: "destructive",
           title: "Access Denied",
-          description: "You need admin privileges to access this page.",
+          description: "You need admin privileges for this club to access this page.",
         });
         navigate("/");
         return;
@@ -102,17 +112,63 @@ const Admin = () => {
   };
 
   const loadData = async () => {
-    const [playersData, teeTimesData, announcementsData, calendarData] = await Promise.all([
-      supabase.from("players").select("*").order("first_name", { ascending: true }),
-      supabase.from("tee_times").select("*").order("date", { ascending: false }),
-      supabase.from("announcements").select("*").order("created_at", { ascending: false }),
-      supabase.from("calendar").select("*").order("created_at", { ascending: false }),
+    if (!activeClub) return;
+
+    const [playersData, sessionsData, announcementsData, calendarData, invitationsData] = await Promise.all([
+      supabase.from("players").select("*").eq("club_id", activeClub.id).order("first_name", { ascending: true }),
+      supabase.from("sessions").select("*").eq("club_id", activeClub.id).order("date", { ascending: false }),
+      supabase.from("announcements").select("*").eq("club_id", activeClub.id).order("created_at", { ascending: false }),
+      supabase.from("calendar").select("*").eq("club_id", activeClub.id).order("created_at", { ascending: false }),
+      supabase.from("invitations").select("*").eq("club_id", activeClub.id).order("created_at", { ascending: false }),
     ]);
 
     setPlayers(playersData.data || []);
-    setTeeTimes(teeTimesData.data || []);
+    setSessions(sessionsData.data || []);
     setAnnouncements(announcementsData.data || []);
     setCalendar(calendarData.data || []);
+    setInvites(invitationsData.data || []);
+  };
+
+  const handleGenerateInvite = async () => {
+    if (!activeClub) return;
+    
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('invitations')
+      .insert({
+        club_id: activeClub.id,
+        invited_by: user.id,
+        role: 'Member'
+      })
+      .select()
+      .single();
+
+    if (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to generate invite.",
+      });
+      return;
+    }
+
+    toast({
+      title: "Success",
+      description: "Invite link generated successfully.",
+    });
+    
+    setIsInviteDialogOpen(false);
+    loadData();
+
+    // Copy to clipboard
+    const inviteLink = `${window.location.origin}/invite/${data.token}`;
+    navigator.clipboard.writeText(inviteLink);
+    toast({
+      title: "Link Copied",
+      description: "The invite link has been copied to your clipboard.",
+    });
   };
 
   const handleDelete = async (table: string, id: string) => {
@@ -185,7 +241,7 @@ const Admin = () => {
     if (newPlayer.notes) playerData.notes = newPlayer.notes;
     if (photoUrl) playerData.photo_url = photoUrl;
 
-    const { error } = await supabase.from("players").insert(playerData);
+    const { error } = await supabase.from("players").insert({ ...playerData, club_id: activeClub?.id });
 
     if (error) {
       toast({
@@ -214,8 +270,8 @@ const Admin = () => {
     }
   };
 
-  const handleAddTeeTime = async () => {
-    if (!newTeeTime.date.trim() || !newTeeTime.time.trim()) {
+  const handleAddSession = async () => {
+    if (!newSession.date.trim() || !newSession.time.trim()) {
       toast({
         variant: "destructive",
         title: "Error",
@@ -224,10 +280,11 @@ const Admin = () => {
       return;
     }
 
-    const { error } = await supabase.from("tee_times").insert({
-      date: newTeeTime.date,
-      time: newTeeTime.time,
-      course: newTeeTime.course || "Samba Session",
+    const { error } = await supabase.from("sessions").insert({
+      date: newSession.date,
+      time: newSession.time,
+      course: newSession.course || "Samba Session",
+      club_id: activeClub?.id
     });
 
     if (error) {
@@ -241,12 +298,12 @@ const Admin = () => {
         title: "Success",
         description: "Session added successfully",
       });
-      setNewTeeTime({
+      setNewSession({
         date: "",
         time: "",
         course: "",
       });
-      setIsTeeTimeDialogOpen(false);
+      setIsSessionDialogOpen(false);
       await loadData();
     }
   };
@@ -261,7 +318,7 @@ const Admin = () => {
       return;
     }
 
-    const { error } = await supabase.from("announcements").insert({ notes: newAnnouncement });
+    const { error } = await supabase.from("announcements").insert({ notes: newAnnouncement, club_id: activeClub?.id });
 
     if (error) {
       toast({
@@ -318,7 +375,7 @@ const Admin = () => {
 
     const attachmentValue = fileUrl || newCalendarAttachment;
 
-    const { error } = await supabase.from("calendar").insert({ attachment: attachmentValue });
+    const { error } = await supabase.from("calendar").insert({ attachment: attachmentValue, club_id: activeClub?.id });
 
     if (error) {
       toast({
@@ -401,17 +458,17 @@ const Admin = () => {
     }
   };
 
-  const handleUpdateTeeTime = async () => {
-    if (!editTeeTime) return;
+  const handleUpdateSession = async () => {
+    if (!editSession) return;
 
     const { error } = await supabase
-      .from("tee_times")
+      .from("sessions")
       .update({
-        date: editTeeTime.date,
-        time: editTeeTime.time,
-        course: editTeeTime.course || "Samba Session",
+        date: editSession.date,
+        time: editSession.time,
+        course: editSession.course || "Samba Session",
       })
-      .eq("id", editTeeTime.id);
+      .eq("id", editSession.id);
 
     if (error) {
       toast({
@@ -424,7 +481,7 @@ const Admin = () => {
         title: "Success",
         description: "Session updated successfully",
       });
-      setEditTeeTime(null);
+      setEditSession(null);
       await loadData();
     }
   };
@@ -537,6 +594,7 @@ const Admin = () => {
           <TabsTrigger value="teetimes" className="data-[state=active]:bg-[#F5F0E8] data-[state=inactive]:bg-[#F5F0E8]">Sessions</TabsTrigger>
           <TabsTrigger value="announcements" className="data-[state=active]:bg-[#F5F0E8] data-[state=inactive]:bg-[#F5F0E8]">Announcements</TabsTrigger>
           <TabsTrigger value="calendar" className="data-[state=active]:bg-[#F5F0E8] data-[state=inactive]:bg-[#F5F0E8]">Calendar</TabsTrigger>
+          <TabsTrigger value="invites" className="data-[state=active]:bg-[#F5F0E8] data-[state=inactive]:bg-[#F5F0E8]">Invites</TabsTrigger>
         </TabsList>
 
         <TabsContent value="players">
@@ -885,7 +943,7 @@ const Admin = () => {
                 <h2 className="text-2xl font-bold">Game Sessions</h2>
                 <p className="text-muted-foreground">Manage session records</p>
               </div>
-              <Dialog open={isTeeTimeDialogOpen} onOpenChange={setIsTeeTimeDialogOpen}>
+              <Dialog open={isSessionDialogOpen} onOpenChange={setIsSessionDialogOpen}>
                 <DialogTrigger asChild>
                   <Button>
                     <Plus className="h-4 w-4 mr-2" />
@@ -905,8 +963,8 @@ const Admin = () => {
                       <Input
                         id="new-date"
                         type="text"
-                        value={newTeeTime.date}
-                        onChange={(e) => setNewTeeTime({ ...newTeeTime, date: e.target.value })}
+                        value={newSession.date}
+                        onChange={(e) => setNewSession({ ...newSession, date: e.target.value })}
                         placeholder="mm/dd/yyyy"
                       />
                     </div>
@@ -915,8 +973,8 @@ const Admin = () => {
                       <Input
                         id="new-time"
                         type="text"
-                        value={newTeeTime.time}
-                        onChange={(e) => setNewTeeTime({ ...newTeeTime, time: e.target.value })}
+                        value={newSession.time}
+                        onChange={(e) => setNewSession({ ...newSession, time: e.target.value })}
                         placeholder="--:--"
                       />
                     </div>
@@ -924,14 +982,14 @@ const Admin = () => {
                       <Label htmlFor="new-course">Venue</Label>
                       <Input
                         id="new-course"
-                        value={newTeeTime.course}
-                        onChange={(e) => setNewTeeTime({ ...newTeeTime, course: e.target.value })}
+                        value={newSession.course}
+                        onChange={(e) => setNewSession({ ...newSession, course: e.target.value })}
                         placeholder="e.g., Amenity Center, Jane's House"
                       />
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button onClick={handleAddTeeTime}>Add Session</Button>
+                    <Button onClick={handleAddSession}>Add Session</Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
@@ -945,23 +1003,23 @@ const Admin = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {teeTimes.map((teeTime) => {
-                  const timeFormatted = teeTime.time 
+                {sessions.map((session) => {
+                  const timeFormatted = session.time 
                     ? (() => {
-                        const [hours, minutes] = teeTime.time.split(':');
+                        const [hours, minutes] = session.time.split(':');
                         const hour = parseInt(hours);
                         const period = hour >= 12 ? 'PM' : 'AM';
                         const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
                         return `${displayHour}:${minutes} ${period}`;
                       })()
-                    : teeTime.time;
+                    : session.time;
                   
-                  const dateFormatted = teeTime.date
-                    ? format(new Date(teeTime.date + 'T00:00:00'), 'EEEE, MMM d, yyyy')
-                    : teeTime.date;
+                  const dateFormatted = session.date
+                    ? format(new Date(session.date + 'T00:00:00'), 'EEEE, MMM d, yyyy')
+                    : session.date;
                   
                   return (
-                    <TableRow key={teeTime.id}>
+                    <TableRow key={session.id}>
                       <TableCell>{dateFormatted}</TableCell>
                       <TableCell>{timeFormatted}</TableCell>
                       <TableCell>
@@ -969,14 +1027,14 @@ const Admin = () => {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setEditTeeTime(teeTime)}
+                          onClick={() => setEditSession(session)}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="destructive"
                           size="sm"
-                          onClick={() => handleDelete("tee_times", teeTime.id)}
+                          onClick={() => handleDelete("sessions", session.id)}
                         >
                           Delete
                         </Button>
@@ -991,7 +1049,7 @@ const Admin = () => {
         </TabsContent>
 
         {/* Edit Session Dialog */}
-        <Dialog open={!!editTeeTime} onOpenChange={(open) => !open && setEditTeeTime(null)}>
+        <Dialog open={!!editSession} onOpenChange={(open) => !open && setEditSession(null)}>
           <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Edit Session</DialogTitle>
@@ -1003,8 +1061,8 @@ const Admin = () => {
                 <Input
                   id="edit-date"
                   type="text"
-                  value={editTeeTime?.date || ""}
-                  onChange={(e) => setEditTeeTime({ ...editTeeTime, date: e.target.value })}
+                  value={editSession?.date || ""}
+                  onChange={(e) => setEditSession({ ...editSession, date: e.target.value })}
                   placeholder="mm/dd/yyyy"
                 />
               </div>
@@ -1013,8 +1071,8 @@ const Admin = () => {
                 <Input
                   id="edit-time"
                   type="text"
-                  value={editTeeTime?.time || ""}
-                  onChange={(e) => setEditTeeTime({ ...editTeeTime, time: e.target.value })}
+                  value={editSession?.time || ""}
+                  onChange={(e) => setEditSession({ ...editSession, time: e.target.value })}
                   placeholder="--:--"
                 />
               </div>
@@ -1022,15 +1080,15 @@ const Admin = () => {
                 <Label htmlFor="edit-course">Venue</Label>
                 <Input
                   id="edit-course"
-                  value={editTeeTime?.course || ""}
-                  onChange={(e) => setEditTeeTime({ ...editTeeTime, course: e.target.value })}
+                  value={editSession?.course || ""}
+                  onChange={(e) => setEditSession({ ...editSession, course: e.target.value })}
                   placeholder="e.g., Amenity Center, Jane's House"
                 />
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setEditTeeTime(null)}>Cancel</Button>
-              <Button onClick={handleUpdateTeeTime}>Save and Return</Button>
+              <Button variant="outline" onClick={() => setEditSession(null)}>Cancel</Button>
+              <Button onClick={handleUpdateSession}>Save and Return</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -1240,6 +1298,91 @@ const Admin = () => {
                   ))}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="invites">
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>Club Invites</CardTitle>
+                  <CardDescription>Generate links to invite users to {activeClub?.name}</CardDescription>
+                </div>
+                <Button onClick={handleGenerateInvite}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Generate Invite Link
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Token/Link</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Created At</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {invites.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                          No invites generated yet.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      invites.map((invite) => (
+                        <TableRow key={invite.id}>
+                          <TableCell className="font-mono text-sm">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate max-w-[200px]">{invite.token}</span>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-6 w-6 p-0"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(`${window.location.origin}/invite/${invite.token}`);
+                                  toast({
+                                    title: "Link Copied",
+                                    description: "The invite link has been copied to your clipboard.",
+                                  });
+                                }}
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                              </Button>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{invite.role}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant={invite.status === 'Accepted' ? 'default' : invite.status === 'Pending' ? 'secondary' : 'destructive'}
+                            >
+                              {invite.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{format(new Date(invite.created_at), "MMM d, yyyy")}</TableCell>
+                          <TableCell>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDelete("invitations", invite.id)}
+                            >
+                              Revoke
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

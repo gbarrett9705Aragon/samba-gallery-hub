@@ -2,6 +2,7 @@ import { Bell } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
+import { useClub } from "@/context/ClubContext";
 
 interface Announcement {
   id: string;
@@ -12,15 +13,23 @@ interface Announcement {
 const Announcements = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
+  const { activeClub } = useClub();
 
   useEffect(() => {
-    fetchAnnouncements();
-  }, []);
+    if (activeClub) {
+      fetchAnnouncements();
+    } else {
+      setLoading(false);
+    }
+  }, [activeClub]);
 
   const fetchAnnouncements = async () => {
+    if (!activeClub) return;
+
     const { data, error } = await supabase
       .from("announcements")
       .select("*")
+      .eq("club_id", activeClub.id)
       .order("created_at", { ascending: false });
 
     if (error) {

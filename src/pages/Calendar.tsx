@@ -2,6 +2,7 @@ import { CalendarDays, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
+import { useClub } from "@/context/ClubContext";
 
 interface CalendarItem {
   id: string;
@@ -12,15 +13,23 @@ interface CalendarItem {
 const Calendar = () => {
   const [calendars, setCalendars] = useState<CalendarItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const { activeClub } = useClub();
 
   useEffect(() => {
-    fetchCalendars();
-  }, []);
+    if (activeClub) {
+      fetchCalendars();
+    } else {
+      setLoading(false);
+    }
+  }, [activeClub]);
 
   const fetchCalendars = async () => {
+    if (!activeClub) return;
+
     const { data, error } = await supabase
       .from("calendar")
       .select("*")
+      .eq("club_id", activeClub.id)
       .order("created_at", { ascending: false });
 
     if (error) {

@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 
-const AddTeeTime = () => {
+const AddSession = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     date: "",
@@ -27,7 +27,7 @@ const AddTeeTime = () => {
 
     setIsSubmitting(true);
 
-    const { error } = await supabase.from("tee_times").insert({
+    const { error } = await supabase.from("sessions").insert({
       date: formData.date,
       time: formData.time,
       course: formData.course || "Samba Session",
@@ -128,4 +128,4 @@ const AddTeeTime = () => {
   );
 };
 
-export default AddTeeTime;
+export default AddSession;

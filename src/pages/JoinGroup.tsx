@@ -8,8 +8,10 @@ import { UserPlus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { formatPhoneNumber } from "@/lib/utils";
+import { useClub } from "@/context/ClubContext";
 
 const JoinGroup = () => {
+  const { activeClub } = useClub();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     firstName: "",
@@ -80,6 +82,7 @@ const JoinGroup = () => {
       email: trimmedData.email,
       handicap: formData.handicap ? parseFloat(formData.handicap) : null,
       photo_url: photoUrl,
+      club_id: activeClub?.id
     });
 
     setIsSubmitting(false);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
+import { useClub } from "@/context/ClubContext";
 
 interface Member {
   id: string;
@@ -17,15 +18,23 @@ interface Member {
 const Members = () => {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  const { activeClub } = useClub();
 
   useEffect(() => {
-    fetchMembers();
-  }, []);
+    if (activeClub) {
+      fetchMembers();
+    } else {
+      setLoading(false);
+    }
+  }, [activeClub]);
 
   const fetchMembers = async () => {
+    if (!activeClub) return;
+
     const { data, error } = await supabase
       .from("players")
       .select("*")
+      .eq("club_id", activeClub.id)
       .order("first_name", { ascending: true });
 
   if (error) {
@@ -42,6 +51,16 @@ const Members = () => {
   };
 
   if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8 md:py-12">
+        <div className="max-w-6xl mx-auto text-center">
+          <p className="text-muted-foreground">Loading members...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!activeClub) {
     return (
       <div className="container mx-auto px-4 py-8 md:py-12">
         <div className="max-w-6xl mx-auto text-center">

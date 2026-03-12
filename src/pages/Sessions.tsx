@@ -9,6 +9,7 @@ import { Calendar, Clock, UserPlus, UserMinus, Users, ArrowLeft, Bell } from "lu
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useClub } from "@/context/ClubContext";
 
 interface Player {
   id: string;
@@ -37,7 +38,7 @@ interface Announcement {
   created_at: string | null;
 }
 
-const TeeTimes = () => {
+const Sessions = () => {
   const [gameSessions, setGameSessions] = useState<GameSession[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -50,19 +51,29 @@ const TeeTimes = () => {
 
   const regularMembers = players.filter(p => p.member_type === 'regular');
 
+  const { activeClub } = useClub();
+
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (activeClub) {
+      fetchData();
+    } else {
+      setLoading(false);
+    }
+  }, [activeClub]);
 
   const fetchData = async () => {
+    setLoading(true);
     await Promise.all([fetchGameSessions(), fetchPlayers(), fetchAnnouncements()]);
     setLoading(false);
   };
 
   const fetchAnnouncements = async () => {
+    if (!activeClub) return;
+
     const { data, error } = await supabase
       .from("announcements")
       .select("*")
+      .eq("club_id", activeClub.id)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -73,10 +84,13 @@ const TeeTimes = () => {
   };
 
   const fetchGameSessions = async () => {
+    if (!activeClub) return;
+
     // Fetch game sessions
     const { data: sessionsData, error: sessionsError } = await supabase
-      .from("tee_times")
+      .from("sessions")
       .select("*")
+      .eq("club_id", activeClub.id)
       .order("date", { ascending: true })
       .order("time", { ascending: true });
 
@@ -88,18 +102,18 @@ const TeeTimes = () => {
     // Fetch signups with player details for all sessions
     // Use explicit foreign key to disambiguate the players relationship
     const { data: signupsData, error: signupsError } = await supabase
-      .from("tee_time_signups")
+      .from("session_signups")
       .select(`
-        tee_time_id,
+        session_id,
         subbing_for_player_id,
-        players!tee_time_signups_player_id_fkey (
+        players!session_signups_player_id_fkey (
           id,
           first_name,
           last_name,
           handicap,
           member_type
         ),
-        subbing_for:players!tee_time_signups_subbing_for_player_id_fkey (
+        subbing_for:players!session_signups_subbing_for_player_id_fkey (
           id,
           first_name,
           last_name,
@@ -116,7 +130,7 @@ const TeeTimes = () => {
     const sessionsWithSignups = (sessionsData || []).map((session) => ({
       ...session,
       signups: (signupsData || [])
-        .filter((signup: any) => signup.tee_time_id === session.id)
+        .filter((signup: any) => signup.session_id === session.id)
         .map((signup: any) => ({
           ...signup.players,
           subbing_for: signup.subbing_for
@@ -128,9 +142,12 @@ const TeeTimes = () => {
   };
 
   const fetchPlayers = async () => {
+    if (!activeClub) return;
+
     const { data, error } = await supabase
       .from("players")
       .select("id, first_name, last_name, handicap, member_type")
+      .eq("club_id", activeClub.id)
       .order("first_name", { ascending: true });
 
     if (error) {
@@ -144,7 +161,7 @@ const TeeTimes = () => {
     if (!selectedSession) return;
 
     const insertData: any = {
-      tee_time_id: selectedSession,
+      session_id: selectedSession,
       player_id: playerId,
     };
 
@@ -152,7 +169,7 @@ const TeeTimes = () => {
       insertData.subbing_for_player_id = subbingForPlayerId;
     }
 
-    const { error } = await supabase.from("tee_time_signups").insert(insertData);
+    const { error } = await supabase.from("session_signups").insert(insertData);
 
     if (error) {
       if (error.code === "23505") {
@@ -174,9 +191,9 @@ const TeeTimes = () => {
     if (!selectedSession) return;
 
     const { error } = await supabase
-      .from("tee_time_signups")
+      .from("session_signups")
       .delete()
-      .eq("tee_time_id", selectedSession)
+      .eq("session_id", sessionId)
       .eq("player_id", playerId);
 
     if (error) {
@@ -195,6 +212,15 @@ const TeeTimes = () => {
         <div className="max-w-4xl mx-auto text-center">
           <p className="text-muted-foreground">Loading game sessions...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (!activeClub) {
+    return (
+      <div className="container py-8 max-w-4xl text-center">
+        <h2 className="text-2xl font-bold mb-4">No Active Club</h2>
+        <p className="text-muted-foreground">Please select a club or join one to view sessions.</p>
       </div>
     );
   }
@@ -473,4 +499,4 @@ const TeeTimes = () => {
   );
 };
 
-export default TeeTimes;
+export default Sessions;

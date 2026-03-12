@@ -42,7 +42,13 @@ const Auth = () => {
           title: "Welcome back!",
           description: "You have successfully logged in.",
         });
-        navigate("/admin");
+        const redirect = localStorage.getItem('redirectAfterLogin');
+        if (redirect) {
+          localStorage.removeItem('redirectAfterLogin');
+          navigate(redirect);
+        } else {
+          navigate("/admin");
+        }
       } else {
         const { error } = await supabase.auth.signUp({
           email,
