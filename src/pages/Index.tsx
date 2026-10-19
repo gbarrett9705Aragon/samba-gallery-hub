@@ -18,7 +18,10 @@ const Index = () => {
         
         <div className="relative z-10 text-center text-primary-foreground px-4 max-w-4xl mx-auto">
           <h1 className="text-4xl md:text-6xl font-bold mb-6">Welcome to Samba</h1>
-          <p className="text-xl md:text-2xl mb-8 opacity-90">
+          <p className="text-xl md:text-2xl mb-2 opacity-90">
+            1st &amp; 3rd Mondays @ 10am
+          </p>
+          <p className="text-lg md:text-xl mb-8 opacity-90">
             Join our community of passionate card players and reserve your game sessions today
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
