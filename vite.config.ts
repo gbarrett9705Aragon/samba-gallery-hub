@@ -17,9 +17,9 @@ export default defineConfig(({ mode }) => ({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "apple-touch-icon.png", "mask-icon.svg"],
       manifest: {
-        name: "Samba",
+        name: "Samba - 1st & 3rd Mondays @ 10am",
         short_name: "Samba",
-        description: "Samba card game sessions, members, and announcements",
+        description: "Samba card game sessions on the 1st & 3rd Mondays at 10am, members, and announcements",
         theme_color: "#9E5A6C",
         background_color: "#ffffff",
         display: "standalone",

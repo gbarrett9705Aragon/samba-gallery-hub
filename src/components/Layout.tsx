@@ -8,9 +8,14 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       <header className="bg-gradient-hero shadow-soft sticky top-0 z-50">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
-            <Link to="/" className="flex items-center gap-2">
-              <CircleDot className="h-8 w-8 text-primary-foreground" />
-              <span className="text-xl font-bold text-primary-foreground">Samba</span>
+            <Link to="/" className="flex items-center gap-2 min-w-0">
+              <CircleDot className="h-8 w-8 text-primary-foreground shrink-0" />
+              <span className="flex flex-col leading-tight min-w-0">
+                <span className="text-lg md:text-xl font-bold text-primary-foreground">Samba</span>
+                <span className="text-[11px] md:text-xs font-medium text-primary-foreground/80">
+                  1st &amp; 3rd Mondays @ 10am
+                </span>
+              </span>
             </Link>
             
             <Button asChild variant="secondary" size="sm">
@@ -29,7 +34,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       
       <footer className="bg-muted py-8 mt-16">
         <div className="container mx-auto px-4 text-center">
-          <p className="text-muted-foreground">© 2025 Samba. All rights reserved.</p>
+          <p className="text-muted-foreground">© 2025 Samba - 1st &amp; 3rd Mondays @ 10am. All rights reserved.</p>
         </div>
       </footer>
     </div>
